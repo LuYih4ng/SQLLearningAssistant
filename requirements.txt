@@ -1,0 +1,13 @@
+fastapi~=0.115.13
+uvicorn[standard]
+sqlalchemy~=2.0.41
+pydantic~=2.11.7
+python-jose[cryptography]~=3.5.0
+passlib[bcrypt]~=1.7.4
+bcrypt
+python-multipart
+python-dotenv
+httpx~=0.28.1
+openai
+dashscope~=1.23.6
+pydantic-settings~=2.10.0

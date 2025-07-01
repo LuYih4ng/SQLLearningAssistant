@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL 学习助手</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div id="app-view" class="view active">
+        <main class="chat-container">
+            <div id="chat-box"></div>
+            <div class="chat-input-area">
+                <div class="controls-bar">
+                    <div class="action-buttons">
+                        <button id="explain-btn">讲解知识点</button>
+                        <button id="test-btn">SQL能力测试</button>
+                        <button id="daily-btn">每日一题</button>
+                    </div>
+                    <div class="model-selector">
+                        <label for="llm-select">选择模型:</label>
+                        <select id="llm-select">
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="qwen">通义千问</option>
+                        </select>
+                    </div>
+                </div>
+                <textarea id="chat-input" placeholder="输入SQL知识点或SQL查询语句..."></textarea>
+                <button id="send-btn">发送</button>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
