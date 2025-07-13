@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册 - SQL 学习助手</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="login-container">
+        <h1>创建新账号</h1>
+        <form id="register-form">
+            <input type="text" id="register-username" placeholder="设置用户名" required>
+            <input type="password" id="register-password" placeholder="设置密码" required>
+            <input type="password" id="confirm-password" placeholder="确认密码" required>
+            <button type="submit">注册</button>
+        </form>
+        <p id="register-error" class="error-message"></p>
+        <p class="register-link">已有账号？ <a href="login.html">返回登录</a></p>
+    </div>
+    <script src="register.js"></script>
+</body>
+</html>
