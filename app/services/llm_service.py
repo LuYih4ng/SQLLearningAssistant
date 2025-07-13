@@ -5,8 +5,10 @@ import dashscope
 import json
 from typing import List, AsyncGenerator
 from ..config import settings
-from ..schemas import LLMGeneratedQuestion
+# 【重要修复】导入了正确的模型名称 LLMGeneratedQuestionData
+from ..schemas import LLMGeneratedQuestionData
 
+# --- 底层LLM调用函数 ---
 async def _call_llm_stream(llm_provider: str, system_prompt: str, user_prompt: str) -> AsyncGenerator[str, None]:
     """一个统一的LLM流式调用函数。"""
     try:
@@ -36,9 +38,7 @@ async def _call_llm_stream(llm_provider: str, system_prompt: str, user_prompt: s
                 incremental_output=True
             )
             for response in responses:
-                # 【重要修复】根据官方文档修正通义千问流式响应的处理方式
                 if response.status_code == 200:
-                    # 直接从 response.output.text 获取增量内容
                     if response.output and response.output.text:
                         yield response.output.text
                 else:
@@ -65,31 +65,37 @@ async def get_llm_explanation(topic: str, llm_provider: str) -> AsyncGenerator[s
     async for chunk in _call_llm_stream(llm_provider, system_prompt, user_prompt):
         yield chunk
 
-async def generate_question_from_llm(topics: List[str], schema: str, llm_provider: str) -> LLMGeneratedQuestion:
-    """调用LLM根据数据库表结构和指定知识点生成题目。"""
-    system_prompt = "你是一个SQL题目生成专家。你的任务是根据提供的数据库表结构和知识点，生成一个SQL查询问题和对应的正确SQL答案。你必须以一个不包含任何其他解释的、纯粹的JSON格式返回结果。"
+async def generate_question_from_llm(topics: List[str], llm_provider: str) -> LLMGeneratedQuestionData:
+    """
+    调用LLM生成一个包含题目描述、建表/插数据SQL和正确查询SQL的完整题目。
+    """
+    system_prompt = "你是一个高级SQL课程设计师和数据工程师。你的任务是创建一个完整的、自包含的SQL练习题。这包括问题描述、用于创建和填充数据表的SQL语句，以及解决该问题的正确查询语句。你必须以一个不包含任何其他解释的、纯粹的JSON格式返回结果。"
     user_prompt = f"""
-数据库表结构如下:
----
-{schema}
----
-请生成一个SQL查询问题，该问题必须同时考察以下知识点: {', '.join(topics)}。
+请围绕以下SQL知识点: **{', '.join(topics)}** 设计一道题目。
+
+题目要求:
+1.  **setup_sql**: 提供一段SQL脚本，包含`CREATE TABLE`语句来定义1到2个相关的表，以及足够的`INSERT INTO`语句来填充这些表，数据量大约在5到10条之间，以便能进行有意义的查询。
+2.  **question**: 根据你创建的表和数据，设计一个清晰、明确的查询问题。
+3.  **correct_sql**: 提供能解决上述问题的、标准的正确SQL查询语句。
 
 请严格按照以下JSON格式返回，不要有任何多余的文字或解释:
 {{
-  "question": "这里是给用户看的问题描述，例如：'查询每个部门中工资最高的员工姓名及其工资。'",
-  "sql": "SELECT ... FROM ...;"
+  "question": "这里是给用户看的问题描述。",
+  "setup_sql": "CREATE TABLE ...; INSERT INTO ...; INSERT INTO ...;",
+  "correct_sql": "SELECT ... FROM ...;"
 }}
 """
     response_text = await _call_llm(llm_provider, system_prompt, user_prompt)
     try:
         data = json.loads(response_text)
-        return LLMGeneratedQuestion(**data)
+        # 【重要修复】使用正确的模型名称 LLMGeneratedQuestionData
+        return LLMGeneratedQuestionData(**data)
     except (json.JSONDecodeError, TypeError) as e:
         print(f"解析LLM返回的JSON失败: {e}\n原始返回: {response_text}")
-        return LLMGeneratedQuestion(
-            question="抱歉，生成题目时发生错误，请稍后再试。",
-            sql="SELECT 'error';"
+        return LLMGeneratedQuestionData(
+            question="AI生成题目失败，请检查LLM的返回格式或重试。",
+            setup_sql="-- error",
+            correct_sql="-- error"
         )
 
 async def analyze_syntax_error(user_sql: str, db_error: str, llm_provider: str) -> str:
@@ -128,5 +134,33 @@ async def analyze_result_error(question: str, user_sql: str, correct_sql: str, l
 ---
 
 用户的SQL语句语法正确，但查询结果与正确答案不符。请仔细比对用户和正确答案的SQL，分析用户代码中可能存在的逻辑错误（例如：JOIN条件错误、聚合函数使用不当、WHERE子句过滤条件错误等）。请用清晰、有条理的方式向用户解释，并引导他/她思考如何修正。
+"""
+    return await _call_llm(llm_provider, system_prompt, user_prompt)
+
+async def analyze_for_improvement(question: str, user_sql: str, correct_sql: str, llm_provider: str) -> str:
+    """
+    在用户回答正确后，调用LLM分析其SQL语句，并提供优化建议。
+    """
+    system_prompt = "你是一位资深的数据库架构师（DBA）和代码审查专家。你的语气专业、友善且富有建设性。"
+    user_prompt = f"""
+在一个SQL练习中，对于问题：“{question}”，用户提交了以下**正确**的答案：
+
+```sql
+-- 用户提交的SQL
+{user_sql}
+```
+
+作为参考，标准的正确答案是：
+```sql
+-- 标准答案
+{correct_sql}
+```
+
+请对用户提交的SQL进行分析，并从以下几个角度提供反馈：
+1.  **可读性**: 代码风格是否清晰？命名是否规范？
+2.  **性能**: 是否有潜在的性能问题？有没有更高效的写法（例如，使用不同的JOIN类型、避免子查询等）？
+3.  **其他方法**: 是否有其他解决问题的思路或可以使用的更高级的SQL特性（如窗口函数）？
+
+如果用户的写法已经非常优秀，请直接夸奖他们。你的回答将直接展示给用户。
 """
     return await _call_llm(llm_provider, system_prompt, user_prompt)
