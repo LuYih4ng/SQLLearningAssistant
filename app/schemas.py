@@ -5,31 +5,33 @@ from typing import Optional, Literal, List, Any
 import datetime
 
 
-# --- User Schemas ---
+# --- User & Auth Schemas ---
 class UserCreate(BaseModel):
     username: str
     password: str
 
 
-# 增加了is_admin和points字段，用于在管理员界面显示
 class User(BaseModel):
     id: int
     username: str
     is_admin: bool
     points: int
+
     class Config:
         from_attributes = True
 
+
+# 【重要修复】重新添加了用于修改密码的模型
 class UserPasswordChange(BaseModel):
     old_password: str
     new_password: str
 
-# 新增: 用于管理员修改用户权限的请求体
+
 class UserPermissionUpdate(BaseModel):
     user_id: int
     is_admin: bool
 
-# --- Token Schemas ---
+
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -39,17 +41,12 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 
-# --- Chat Schemas (已修正) ---
+# --- Chat Schema ---
 class ExplanationRequest(BaseModel):
     topic: str
     llm_provider: Literal["deepseek", "qwen"]
 
 
-class ExplanationResponse(BaseModel):
-    answer: str
-
-
-# 【重要修复】重新添加了之前遗漏的聊天记录模型
 class ChatHistoryBase(BaseModel):
     request_message: str
     response_message: str
@@ -70,54 +67,76 @@ class ChatHistory(ChatHistoryBase):
 
 
 # --- Question & Test Schemas ---
-class QuestionGenerationRequest(BaseModel):
-    topics: List[str]
-    llm_provider: Literal["deepseek", "qwen"]
-
-
-class QuestionGenerationResponse(BaseModel):
-    question_id: int
-    question_text: str
-
-
-class LLMGeneratedQuestion(BaseModel):
+class LLMGeneratedQuestionData(BaseModel):
     question: str
-    sql: str
-
-
-class AnswerSubmissionRequest(BaseModel):
-    question_id: int
-    user_sql: str
-    llm_provider: Literal["deepseek", "qwen"] = "deepseek"
-
-
-class AnswerEvaluationResponse(BaseModel):
-    status: Literal["correct", "syntax_error", "result_error"]
-    message: str
-    analysis: Optional[str] = None
-    user_result: Optional[List[Any]] = None
-    correct_result: Optional[List[Any]] = None
-
-
-# --- Daily Question & Leaderboard Schemas ---
-class DailyQuestionCreate(BaseModel):
-    title: str = Field(..., max_length=100)
-    question_text: str
+    setup_sql: str
     correct_sql: str
 
 
-class DailyQuestionPublic(BaseModel):
-    id: int
+class BatchGenerateRequest(BaseModel):
+    topics: List[str]
+    count: int = Field(gt=0, le=10)
+    llm_provider: Literal["deepseek", "qwen"] = "deepseek"
+
+# 【重要修复】为抽题功能新增一个专门的请求模型
+class GetQuestionRequest(BaseModel):
+    topics: List[str]
+
+class QuestionUpdate(BaseModel):
     title: str
     question_text: str
-    question_date: datetime.date
+    setup_sql: str
+    correct_sql: str
+    topics: str
+
+
+class QuestionAdminView(QuestionUpdate):
+    id: int
+    status: str
+    author_id: int
+    created_at: datetime.datetime
 
     class Config:
         from_attributes = True
 
 
-class DailyAnswerSubmissionRequest(BaseModel):
+class QuestionPublicView(BaseModel):
     question_id: int
+    title: str
+    question_text: str
+    setup_sql: str
+    topics: str
+
+    class Config:
+        from_attributes = True
+
+
+class TestAnswerSubmissionRequest(BaseModel):
+    question_id: int
+    user_sql: str
+
+
+class TestAnswerEvaluationResponse(BaseModel):
+    status: Literal["correct", "syntax_error", "result_error"]
+    message: str
+    analysis: Optional[str] = None
+
+
+# --- Daily Question & Leaderboard Schemas ---
+class DailyQuestionPublishRequest(BaseModel):
+    question_id: int
+
+
+class DailyQuestionPublic(BaseModel):
+    id: int
+    question_id: int
+    title: str
+    question_text: str
+    question_date: datetime.date
+
+
+class DailyAnswerSubmissionRequest(BaseModel):
+    daily_question_id: int
     user_sql: str
 
 

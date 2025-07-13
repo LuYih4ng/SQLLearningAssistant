@@ -1,16 +1,13 @@
 # 作用: 定义仅供管理员访问的API路由。
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
-import datetime
-from pydantic import BaseModel
 
 from .. import crud, models, schemas
-from ..database import get_db, get_practice_db_path
+from ..database import get_db
 from ..dependencies import get_current_admin_user
 from ..services import llm_service
-from ..services.sql_executor import SQLExecutor
 
 router = APIRouter(
     prefix="/admin",
@@ -18,41 +15,76 @@ router = APIRouter(
     dependencies=[Depends(get_current_admin_user)]
 )
 
-# --- 每日一题相关 ---
-class DailyQuestionAIRequest(BaseModel):
-    topics: List[str]
-    llm_provider: str = "deepseek"
+# --- 题库管理 ---
 
-@router.post("/daily-question/ai-generate", response_model=schemas.LLMGeneratedQuestion)
-async def ai_generate_daily_question(
-    request: DailyQuestionAIRequest,
-    practice_db_path: str = Depends(get_practice_db_path)
-):
-    """由AI生成每日一题的草稿（问题和SQL）"""
-    executor = SQLExecutor(practice_db_path)
-    schema = executor.get_db_schema()
-    llm_question = await llm_service.generate_question_from_llm(
-        topics=request.topics,
-        schema=schema,
-        llm_provider=request.llm_provider
-    )
-    # 只是返回草稿，不保存
-    return llm_question
+# 【重要修复】将函数声明为 async def
+async def background_task_generate_questions(db: Session, request: schemas.BatchGenerateRequest, author_id: int):
+    """后台任务：调用LLM生成题目并存入数据库"""
+    print(f"后台任务开始：为用户 {author_id} 生成 {request.count} 道关于 '{request.topics}' 的题目。")
+    for i in range(request.count):
+        print(f"正在生成第 {i+1}/{request.count} 道题...")
+        # 现在可以在这里安全地使用 await
+        question_data = await llm_service.generate_question_from_llm(
+            topics=request.topics,
+            llm_provider=request.llm_provider
+        )
+        if "error" not in question_data.correct_sql:
+            # 注意：crud 操作是同步的，在后台任务的异步函数中调用是可行的，
+            # 但在高性能场景下需注意不要长时间阻塞事件循环。
+            crud.create_question_draft(
+                db=db,
+                question_data=question_data,
+                topics=",".join(request.topics),
+                author_id=author_id
+            )
+    print("后台任务完成。")
 
-@router.post("/daily-question/publish", response_model=schemas.DailyQuestionPublic, status_code=status.HTTP_201_CREATED)
-def publish_daily_question(
-    question: schemas.DailyQuestionCreate,
+
+@router.post("/questions/batch-generate")
+async def batch_generate_questions(
+    request: schemas.BatchGenerateRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     admin_user: models.User = Depends(get_current_admin_user)
 ):
-    """管理员确认并发布每日一题"""
-    existing_question = crud.get_daily_question_by_date(db, date=datetime.date.today())
-    if existing_question:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"今天的每日一题已经由 '{existing_question.user.username}' 发布过了。"
-        )
-    return crud.create_daily_question(db=db, question=question, author_id=admin_user.id)
+    """
+    管理员请求批量生成题目。该请求会立即返回，并在后台执行生成任务。
+    """
+    background_tasks.add_task(background_task_generate_questions, db, request, admin_user.id)
+    return {"message": f"已开始在后台生成 {request.count} 道题目，请稍后在审核列表查看。"}
+
+
+@router.get("/questions/drafts", response_model=List[schemas.QuestionAdminView])
+def get_all_draft_questions(skip: int = 0, limit: int = 20, db: Session = Depends(get_db)):
+    """获取待审核的题目草稿列表"""
+    return crud.get_draft_questions(db, skip=skip, limit=limit)
+
+
+@router.put("/questions/{question_id}", response_model=schemas.QuestionAdminView)
+def update_draft_question(
+    question_id: int,
+    question_update: schemas.QuestionUpdate,
+    db: Session = Depends(get_db)
+):
+    """管理员更新一个题目草稿的内容"""
+    updated_question = crud.update_question(db, question_id, question_update)
+    if not updated_question:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该题目")
+    return updated_question
+
+
+@router.post("/questions/{question_id}/publish", response_model=schemas.QuestionAdminView)
+def publish_a_question(
+    question_id: int,
+    db: Session = Depends(get_db),
+    admin_user: models.User = Depends(get_current_admin_user)
+):
+    """管理员审核通过并发布一个题目"""
+    published_question = crud.publish_question(db, question_id, admin_user.id)
+    if not published_question:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该题目或题目状态不正确")
+    return published_question
+
 
 # --- 用户管理相关 ---
 @router.get("/users", response_model=List[schemas.User])
