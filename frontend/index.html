@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL 学习助手</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- 引入marked.js用于渲染Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div id="app-view" class="view active">
+        <aside class="sidebar">
+            <h2>信息面板</h2>
+            <div id="user-info">
+                <p>用户: <span id="username-display"></span></p>
+                <p>积分: <span id="points-display"></span></p>
+                <button id="change-password-btn" class="secondary-btn">修改密码</button>
+                <button id="logout-btn">退出登录</button>
+            </div>
+            <hr>
+            <div id="schema-container">
+                <h3>题目表结构</h3>
+                <pre id="schema-display">请先抽取题目</pre>
+            </div>
+            <hr>
+            <div id="leaderboard-container">
+                <h3>🏆 积分排行榜</h3>
+                <div id="leaderboard-display"></div>
+            </div>
+        </aside>
+
+        <main class="chat-container">
+            <div id="chat-box"></div>
+            <div class="chat-input-area">
+                <div class="controls-bar">
+                    <div class="action-buttons">
+                        <button id="explain-btn">讲解知识点</button>
+                        <button id="test-btn">SQL能力测试</button>
+                        <button id="daily-btn">每日一题</button>
+                    </div>
+                    <div class="model-selector">
+                        <label for="llm-select">选择模型:</label>
+                        <select id="llm-select">
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="qwen">通义千问</option>
+                        </select>
+                    </div>
+                </div>
+                <textarea id="chat-input" placeholder="输入SQL知识点或SQL查询语句..."></textarea>
+                <button id="send-btn">发送</button>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
