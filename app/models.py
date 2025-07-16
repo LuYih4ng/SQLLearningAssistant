@@ -19,7 +19,8 @@ class User(Base):
     authored_questions = relationship("Question", foreign_keys='Question.author_id', back_populates="author")
     approved_questions = relationship("Question", foreign_keys='Question.approver_id', back_populates="approver")
     daily_submissions = relationship("DailySubmission", back_populates="user")
-
+    # 新增：用户与能力测试提交记录的关系
+    test_submissions = relationship("TestSubmission", back_populates="user")
 
 class ChatHistory(Base):
     __tablename__ = 'chat_history'
@@ -55,7 +56,8 @@ class Question(Base):
 
     author = relationship("User", foreign_keys=[author_id], back_populates="authored_questions")
     approver = relationship("User", foreign_keys=[approver_id], back_populates="approved_questions")
-
+    # 新增：题目与测试提交记录的关系
+    submissions = relationship("TestSubmission", back_populates="question")
 
 # 【模型简化】DailyQuestion 现在只引用 Question 表中的题目ID
 class DailyQuestion(Base):
@@ -83,3 +85,15 @@ class DailySubmission(Base):
     daily_question_entry = relationship("DailyQuestion", back_populates="submissions")
 
 # 原有的 GeneratedQuestion 模型已被移除
+
+# --- 【新增模型】用于记录能力测试的每一次提交 ---
+class TestSubmission(Base):
+    __tablename__ = 'test_submissions'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), index=True)
+    question_id = Column(Integer, ForeignKey('questions.id'), index=True)
+    is_correct = Column(Boolean, nullable=False)
+    submitted_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), index=True)
+
+    user = relationship("User", back_populates="test_submissions")
+    question = relationship("Question", back_populates="submissions")

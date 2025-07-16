@@ -3,6 +3,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginError = document.getElementById('login-error');
     const API_BASE_URL = 'http://127.0.0.1:8000';
 
+    // 如果已有token，先清除，确保每次都通过登录流程判断
+    if (localStorage.getItem('sql_token')) {
+        localStorage.removeItem('sql_token');
+    }
+
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         loginError.textContent = '';
@@ -19,23 +24,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST',
                 body: formData,
             });
-            if (!tokenResponse.ok) throw new Error('用户名或密码错误');
+            if (!tokenResponse.ok) {
+                const errorData = await tokenResponse.json();
+                throw new Error(errorData.detail || '用户名或密码错误');
+            }
             const tokenData = await tokenResponse.json();
             const token = tokenData.access_token;
             localStorage.setItem('sql_token', token);
 
-            // 第二步：使用token获取用户信息，以判断是否为管理员
+            // 第二步：使用token获取用户信息
             const userResponse = await fetch(API_BASE_URL + '/auth/users/me', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (!userResponse.ok) throw new Error('无法获取用户信息');
+            if (!userResponse.ok) {
+                throw new Error('无法获取用户信息');
+            }
             const userData = await userResponse.json();
 
-            // 第三步：根据is_admin字段进行跳转
-            if (userData.is_admin) {
-                window.location.href = 'admin.html'; // 管理员跳转到admin.html
+            // --- 【重要调试代码】 ---
+            // 在浏览器开发者工具的控制台(Console)中查看返回的用户信息
+            console.log("获取到的用户信息 (User Data):", userData);
+            console.log("is_admin 字段的值:", userData.is_admin);
+            console.log("is_admin 字段的类型:", typeof userData.is_admin);
+            // -------------------------
+
+            // 第三步：根据 is_admin 字段进行跳转
+            if (userData.is_admin === true) { // 严格判断是否为布尔值 true
+                console.log("判断为管理员，正在跳转到 admin.html...");
+                window.location.href = 'admin.html';
             } else {
-                window.location.href = 'index.html'; // 普通用户跳转到index.html
+                console.log("判断为普通用户，正在跳转到 index.html...");
+                window.location.href = 'index.html';
             }
 
         } catch (error) {

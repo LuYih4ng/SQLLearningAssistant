@@ -1,10 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
-   // --- 全局状态和常量 ---
+    // --- 全局状态和常量 ---
     const API_BASE_URL = 'http://127.0.0.1:8000';
     let state = {
         token: localStorage.getItem('sql_token'),
         user: null,
-        currentMode: null, // 'explain', 'test', 'daily'
+        currentMode: null,
         currentQuestionId: null, // 用于能力测试和每日一题
     };
 
@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const schemaDisplay = document.getElementById('schema-display');
     const leaderboardDisplay = document.getElementById('leaderboard-display');
     const llmSelect = document.getElementById('llm-select');
+    const personalizedSwitch = document.getElementById('personalized-switch');
 
     // --- API 调用封装 ---
     async function apiCall(endpoint, method = 'GET', body = null) {
@@ -34,15 +35,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.token) {
             headers['Authorization'] = `Bearer ${state.token}`;
         }
+
         const options = { method, headers };
         if (body) {
             options.body = JSON.stringify(body);
         }
+
         try {
             const response = await fetch(API_BASE_URL + endpoint, options);
             if (response.status === 401) {
                 handleLogout();
-                return;
+                return null;
             }
             if (!response.ok) {
                 const errorData = await response.json();
@@ -90,22 +93,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 【修改】现在这个函数可以被动态调用来更新表结构
     function updateSchemaDisplay(schemaText) {
         schemaDisplay.textContent = schemaText;
     }
 
-    async function fetchAndDisplaySchema() {
-        try {
-            const schema = await apiCall('/test/schema');
-            if (!schema) return;
-            schemaDisplay.textContent = schema;
-        } catch (error) {
-            schemaDisplay.textContent = '无法加载表结构。';
-        }
-    }
-
-    // --- 业务逻辑和事件处理 ---
+    // --- 业务逻辑 ---
     async function initializeApp() {
         try {
             state.user = await apiCall('/auth/users/me');
@@ -131,8 +123,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const buttons = [explainBtn, testBtn, dailyBtn];
         buttons.forEach(btn => btn.classList.remove('active'));
 
-        state.currentQuestionId = null; // 切换模式时重置题目状态
-        updateSchemaDisplay('请先抽取题目'); // 重置表结构显示
+        state.currentQuestionId = null;
+        updateSchemaDisplay('请先抽取题目');
 
         if (mode === 'explain') {
             explainBtn.classList.add('active');
@@ -142,55 +134,46 @@ document.addEventListener('DOMContentLoaded', () => {
             chatInput.placeholder = '输入想练习的知识点 (用逗号分隔), 然后点击发送来抽取题目...';
         } else if (mode === 'daily') {
             dailyBtn.classList.add('active');
-            chatInput.placeholder = '点击下方按钮获取每日一题, 然后在此输入SQL答案...';
+            chatInput.placeholder = '点击下方按钮获取个性化题目, 然后在此输入SQL答案...';
         }
     }
 
     explainBtn.addEventListener('click', () => setMode('explain'));
     testBtn.addEventListener('click', () => setMode('test'));
+
     dailyBtn.addEventListener('click', async () => {
         setMode('daily');
-        appendMessage('bot', '正在获取每日一题...');
+        appendMessage('bot', '正在为你推荐一道个性化题目...');
         try {
-            const question = await apiCall('/daily/question');
+            const question = await apiCall('/daily/get-personalized-question');
             if(!question) return;
-            // 每日一题现在没有setup_sql，所以不清空
-            state.currentQuestionId = question.id; // 注意：这里是daily_question的ID
-            appendMessage('system', `题目: ${question.title}\n\n${question.question_text}`);
+            state.currentQuestionId = question.question_id;
+            appendMessage('system', `为你推荐题目: ${question.title}\n\n${question.question_text}`);
+            updateSchemaDisplay(question.setup_sql);
         } catch (error) {
-            appendMessage('bot', `获取每日一题失败: ${error.message}`);
+            appendMessage('bot', `推荐失败: ${error.message}`);
         }
     });
 
     sendBtn.addEventListener('click', async () => {
         const input = chatInput.value.trim();
         if (!input) return;
-        if (!state.currentMode) {
-            appendMessage('bot', '请先选择一个功能模式。');
-            return;
-        }
+        if (!state.currentMode) { appendMessage('bot', '请先选择一个功能模式。'); return; }
         appendMessage('user', input);
         chatInput.value = '';
         try {
             switch (state.currentMode) {
-                case 'explain':
-                    await handleExplain(input);
-                    break;
-                case 'test':
-                    // 【新逻辑】根据是否有题目ID，决定是抽题还是提交答案
-                    state.currentQuestionId ? await handleTestSubmit(input) : await handleTestGetQuestion(input);
-                    break;
-                case 'daily':
-                    state.currentQuestionId ? await handleDailySubmit(input) : appendMessage('bot', '请先点击"每日一题"按钮获取题目。');
-                    break;
+                case 'explain': await handleExplain(input); break;
+                case 'test': state.currentQuestionId ? await handleTestSubmit(input) : await handleTestGetQuestion(input); break;
+                case 'daily': state.currentQuestionId ? await handleDailySubmit(input) : appendMessage('bot', '请先点击"个性化每日一题"按钮获取题目。'); break;
             }
-        } catch (error) {
-            appendMessage('bot', `操作失败: ${error.message}`);
-        }
+        } catch (error) { appendMessage('bot', `操作失败: ${error.message}`); }
     });
 
+    // --- 核心函数 ---
     async function handleExplain(topic) {
         const selectedLlm = llmSelect.value;
+        const usePersonalized = personalizedSwitch.checked;
         appendMessage('bot', `正在用 ${selectedLlm} 查询关于 "${topic}" 的解释...`);
 
         const botMessageDiv = document.createElement('div');
@@ -222,12 +205,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 chatBox.scrollTop = chatBox.scrollHeight;
             }
             contentP.innerHTML = marked.parse(fullContent);
+
+            if (usePersonalized) {
+                appendMessage('bot', '正在根据你的情况为你推荐相关题目...');
+                const recommended = await apiCall('/test/get-question', 'POST', { topics: [topic] });
+                if (recommended) {
+                    const recommendMsg = `
+                        <p>为你推荐一道相关题目，试试看吧！</p>
+                        <p><strong>题目: ${recommended.title}</strong></p>
+                        <p>${recommended.question_text}</p>
+                        <button class="accept-recommend-btn" data-id="${recommended.question_id}" data-schema="${escape(recommended.setup_sql)}">接受挑战</button>
+                    `;
+                    appendMessage('system', recommendMsg, 'html');
+                }
+            }
         } catch (error) {
             contentP.textContent = `请求失败: ${error.message}`;
         }
     }
 
-    // 【新】处理抽取能力测试题目的逻辑
+    chatBox.addEventListener('click', (e) => {
+        if (e.target.classList.contains('accept-recommend-btn')) {
+            setMode('test');
+            state.currentQuestionId = parseInt(e.target.dataset.id, 10);
+            updateSchemaDisplay(unescape(e.target.dataset.schema));
+            chatInput.placeholder = '挑战已接受！请在此输入你的SQL答案...';
+            appendMessage('system', '模式已切换到能力测试，请开始作答。');
+        }
+    });
+
     async function handleTestGetQuestion(topicsInput) {
         appendMessage('bot', `正在根据知识点 "${topicsInput}" 从题库中抽取题目...`);
         const topics = topicsInput.split(',').map(t => t.trim());
@@ -236,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response) {
                 state.currentQuestionId = response.question_id;
                 appendMessage('system', `题目: ${response.title}\n\n${response.question_text}`);
-                updateSchemaDisplay(response.setup_sql); // 动态更新表结构
+                updateSchemaDisplay(response.setup_sql);
                 chatInput.placeholder = '题目已加载，请在此输入你的SQL答案...';
             }
         } catch (error) {
@@ -244,73 +250,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 【新】处理能力测试答案提交的逻辑
     async function handleTestSubmit(sql) {
         appendMessage('bot', `正在评测你的SQL答案...`);
-        const body = {
-            question_id: state.currentQuestionId,
-            user_sql: sql,
-        };
+        const body = { question_id: state.currentQuestionId, user_sql: sql };
         try {
             const response = await apiCall('/test/submit-answer', 'POST', body);
             if (response) {
                 let content = `<h4>评测结果: ${response.message}</h4>`;
-                // 新逻辑下，总是有分析结果
-                content += `<p><strong>AI导师分析:</strong></p><pre>${response.analysis}</pre>`;
+                if (response.analysis) {
+                    content += `<p><strong>AI导师分析:</strong></p><pre>${response.analysis}</pre>`;
+                }
                 appendMessage('bot', content, 'html');
             }
         } catch (error) {
             appendMessage('bot', `评测失败: ${error.message}`);
         } finally {
-            // 评测结束后，重置状态，准备下一轮
             state.currentQuestionId = null;
             updateSchemaDisplay('请先抽取题目');
-            chatInput.placeholder = '输入想练习的知识点, 然后点击发送来抽取题目...';
+            setMode('test');
         }
     }
 
-    async function handleTestGenerate(topicsInput) {
-        const selectedLlm = llmSelect.value;
-        appendMessage('bot', `正在根据知识点 "${topicsInput}" 生成题目...`);
-        const topics = topicsInput.split(',').map(t => t.trim());
-        const response = await apiCall('/test/generate-question', 'POST', { topics, llm_provider: selectedLlm });
-        if (response) {
-            state.currentQuestionId = response.question_id;
-            appendMessage('system', `题目: ${response.question_text}`);
-            chatInput.placeholder = '请在此输入你的SQL答案...';
-        }
-    }
-
-    async function handleTestSubmit(sql) {
-        const selectedLlm = llmSelect.value;
-        appendMessage('bot', `正在评测你的SQL答案...`);
-        const body = {
-            question_id: state.currentQuestionId,
-            user_sql: sql,
-            llm_provider: selectedLlm
-        };
-        const response = await apiCall('/test/submit-answer', 'POST', body);
-        if (response) {
-            let content = `<h4>评测结果: ${response.message}</h4>`;
-            if (response.analysis) {
-                content += `<p><strong>AI导师分析:</strong></p><pre>${response.analysis}</pre>`;
-            }
-            appendMessage('bot', content, 'html');
-        }
-        state.currentQuestionId = null;
-        chatInput.placeholder = '输入要测试的知识点 (用逗号分隔)...';
-    }
-
-    // 【修改】处理每日一题答案提交的逻辑
     async function handleDailySubmit(sql) {
-        appendMessage('bot', `正在提交每日一题答案...`);
-        const body = { daily_question_id: state.currentQuestionId, user_sql: sql };
+        appendMessage('bot', `正在提交答案...`);
+        // 【重要修复】将请求体中的字段名从 daily_question_id 改为 question_id
+        const body = { question_id: state.currentQuestionId, user_sql: sql };
         try {
-            const response = await apiCall('/daily/submit', 'POST', body);
+            const response = await apiCall('/daily/submit-personalized-answer', 'POST', body);
             if (response) {
                 appendMessage('bot', response.message);
                 if (response.status === 'correct' || response.status === 'already_solved') {
-                    state.currentQuestionId = null; // 答对或已答过，则不能再提交
+                    state.currentQuestionId = null;
                     if (response.status === 'correct') {
                         state.user = await apiCall('/auth/users/me');
                         updateUserInfo();

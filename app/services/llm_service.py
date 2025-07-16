@@ -3,6 +3,7 @@
 import openai
 import dashscope
 import json
+import re # 导入正则表达式模块
 from typing import List, AsyncGenerator
 from ..config import settings
 # 【重要修复】导入了正确的模型名称 LLMGeneratedQuestionData
@@ -65,6 +66,8 @@ async def get_llm_explanation(topic: str, llm_provider: str) -> AsyncGenerator[s
     async for chunk in _call_llm_stream(llm_provider, system_prompt, user_prompt):
         yield chunk
 
+
+# --- 【核心修改】题目生成 ---
 async def generate_question_from_llm(topics: List[str], llm_provider: str) -> LLMGeneratedQuestionData:
     """
     调用LLM生成一个包含题目描述、建表/插数据SQL和正确查询SQL的完整题目。
@@ -86,9 +89,18 @@ async def generate_question_from_llm(topics: List[str], llm_provider: str) -> LL
 }}
 """
     response_text = await _call_llm(llm_provider, system_prompt, user_prompt)
+
     try:
-        data = json.loads(response_text)
-        # 【重要修复】使用正确的模型名称 LLMGeneratedQuestionData
+        # 【重要修复】清洗LLM返回的文本，移除Markdown代码块标记
+        # 使用正则表达式匹配被 ```json ... ``` 包围的内容
+        match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        if match:
+            json_str = match.group(1)
+        else:
+            # 如果没有匹配到 ```json, 则假设整个字符串就是JSON
+            json_str = response_text
+
+        data = json.loads(json_str)
         return LLMGeneratedQuestionData(**data)
     except (json.JSONDecodeError, TypeError) as e:
         print(f"解析LLM返回的JSON失败: {e}\n原始返回: {response_text}")

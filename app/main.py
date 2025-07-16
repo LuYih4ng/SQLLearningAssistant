@@ -41,7 +41,6 @@ app.include_router(chat.router)
 app.include_router(test.router)
 app.include_router(admin.router)
 app.include_router(daily.router)
-
 @app.get("/", tags=["Root"])
 def read_root():
     return {"message": "欢迎来到 SQL 学习助手 v2.0 API"}

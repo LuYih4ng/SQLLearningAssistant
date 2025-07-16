@@ -4,13 +4,254 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理员后台 - SQL学习助手</title>
-    <link rel="stylesheet" href="style.css">
+    <style>
+        /* 基本样式和变量 */
+        :root {
+            --primary-color: #4a90e2;
+            --background-color: #f4f7f6;
+            --container-bg: #ffffff;
+            --text-color: #333;
+            --border-color: #ddd;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden; /* 防止body滚动 */
+        }
+
+        /* 视图容器 */
+        .view {
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
+        .view.active {
+            display: flex;
+        }
+
+        /* 管理员界面样式 */
+        #admin-view.active {
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+        }
+
+        .admin-header {
+            width: 100%;
+            padding: 15px 30px;
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+            flex-shrink: 0; /* 防止头部收缩 */
+        }
+
+        .admin-header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        /* [新增] 确保右侧用户控件区域稳定布局 */
+        .admin-user-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px; /* 为按钮和文字之间提供一些间距 */
+        }
+
+        .admin-main {
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            width: 100%;
+            max-width: 960px;
+            margin: 0 auto;
+            overflow-y: auto; /* 仅允许主内容区滚动 */
+            flex-grow: 1; /* 占据剩余空间 */
+            box-sizing: border-box;
+        }
+
+        .admin-card {
+            background: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+
+        .admin-card h2 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .form-group input[type="text"], .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        #user-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        #user-table th, #user-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+
+        #user-table th {
+            background-color: #f8f8f8;
+        }
+
+        .form-group-inline {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap; /* 允许在小屏幕上换行 */
+        }
+
+        .form-group-inline input, .form-group-inline select, .form-group-inline button {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .form-group-inline input[type="text"] { flex-grow: 1; }
+        .form-group-inline input[type="number"] { width: 80px; }
+
+        #draft-list {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #f7f7f7;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+
+        .draft-item {
+            border: 1px solid #e0e0e0;
+            padding: 15px;
+            border-radius: 5px;
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .draft-title { font-weight: bold; }
+        .draft-topics { font-size: 14px; color: #666; margin: 5px 0; }
+        .edit-draft-btn {
+            padding: 5px 10px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        /* 模态框样式 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: none; /* [修改] 默认隐藏 */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .modal-close-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .modal-actions {
+            margin-top: 20px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* 按钮样式 */
+        button {
+            border: none;
+            border-radius: 5px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #logout-btn {
+            background-color: #e74c3c;
+            color: white;
+        }
+        #logout-btn:hover {
+            background-color: #c0392b;
+        }
+
+        .secondary-btn {
+            background-color: #7f8c8d;
+            color: white;
+        }
+        .secondary-btn:hover {
+            background-color: #95a5a6;
+        }
+    </style>
 </head>
 <body>
-    <div id="admin-view" class="active">
+    <div id="admin-view" class="view active">
         <header class="admin-header">
             <h1>SQL 学习助手 - 管理员后台</h1>
-            <div>
+            <div class="admin-user-controls">
                 <span>欢迎, <strong id="admin-username"></strong></span>
                 <button id="change-password-btn" class="secondary-btn">修改密码</button>
                 <button id="logout-btn">退出登录</button>
@@ -30,7 +271,7 @@
                     <button id="batch-generate-btn">开始生成</button>
                 </div>
             </section>
-            
+
             <!-- 待审核题目列表 -->
             <section class="admin-card">
                 <h2>待审核题目 (<span id="draft-count">0</span>)</h2>
@@ -38,11 +279,31 @@
                     <!-- 题目草稿将在此动态插入 -->
                 </div>
             </section>
+
+            <!-- 用户管理 -->
+            <section class="admin-card">
+                <h2>用户管理</h2>
+                <div class="table-container">
+                    <table id="user-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>用户名</th>
+                                <th>积分</th>
+                                <th>管理员权限</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- 用户数据将在此动态插入 -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </main>
     </div>
 
     <!-- 题目审核/编辑 模态框 -->
-    <div id="edit-modal" class="modal-overlay" style="display: none;">
+    <div id="edit-modal" class="modal-overlay">
         <div class="modal-content">
             <span class="modal-close-btn">&times;</span>
             <h2>审核/编辑题目</h2>
@@ -74,6 +335,251 @@
         </div>
     </div>
 
-    <script src="admin.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- 配置 ---
+        const API_BASE_URL = 'http://127.0.0.1:8000'; // 请确保这是你正确的后端地址
+        const token = localStorage.getItem('sql_token');
+
+        // --- 权限检查 ---
+        if (!token) {
+            console.error("未找到认证token，请先登录。");
+            document.body.innerHTML = '<h1>请先登录</h1><p>未找到认证token，无法加载管理员后台。</p>';
+            return;
+        }
+
+        // --- [新增] 缓存 ---
+        let draftCache = [];
+
+        // --- API 封装 ---
+        async function apiCall(endpoint, method = 'GET', body = null) {
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            };
+            const options = { method, headers };
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            try {
+                const response = await fetch(API_BASE_URL + endpoint, options);
+                if (response.status === 401 || response.status === 403) {
+                    console.error("认证失败或权限不足, 将登出。");
+                    handleLogout();
+                    return null;
+                }
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: '无法解析的错误响应' }));
+                    throw new Error(errorData.detail || `API请求失败，状态码: ${response.status}`);
+                }
+                if (response.status === 204) { // No Content
+                    return null;
+                }
+                return response.json();
+            } catch (error) {
+                console.error(`API调用到 ${endpoint} 失败:`, error);
+                alert(`请求失败: ${error.message}`);
+                throw error;
+            }
+        }
+
+        // --- DOM 元素 ---
+        const adminUsername = document.getElementById('admin-username');
+        const logoutBtn = document.getElementById('logout-btn');
+        const changePasswordBtn = document.getElementById('change-password-btn');
+        const batchGenerateBtn = document.getElementById('batch-generate-btn');
+        const draftListContainer = document.getElementById('draft-list');
+        const draftCountSpan = document.getElementById('draft-count');
+        const editModal = document.getElementById('edit-modal');
+        const closeModalBtn = document.querySelector('.modal-close-btn');
+        const updateBtn = document.getElementById('update-btn');
+        const publishBtn = document.getElementById('publish-btn');
+        const userTableBody = document.querySelector('#user-table tbody');
+
+        // --- 页面初始化 ---
+        async function initializeAdminPage() {
+            try {
+                const user = await apiCall('/auth/users/me');
+                if (user && user.is_admin) {
+                    adminUsername.textContent = user.username;
+                    await Promise.all([loadDrafts(), loadUsers()]);
+                } else {
+                    alert('您没有管理员权限。');
+                    handleLogout();
+                }
+            } catch (error) {
+                handleLogout();
+            }
+        }
+
+        // --- 用户管理 ---
+        async function loadUsers() {
+            try {
+                const users = await apiCall('/admin/users');
+                if (!users) return;
+                userTableBody.innerHTML = '';
+                users.forEach(user => {
+                    const row = document.createElement('tr');
+                    const isDisabled = user.id === 1 ? 'disabled' : '';
+                    row.innerHTML = `
+                        <td>${user.id}</td>
+                        <td>${user.username}</td>
+                        <td>${user.points}</td>
+                        <td>
+                            <input type="checkbox" class="permission-checkbox" data-userid="${user.id}" ${user.is_admin ? 'checked' : ''} ${isDisabled}>
+                        </td>
+                    `;
+                    userTableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('加载用户列表失败:', error);
+            }
+        }
+
+        userTableBody.addEventListener('change', async (e) => {
+            if (e.target.classList.contains('permission-checkbox')) {
+                const userId = parseInt(e.target.dataset.userid, 10);
+                const isAdmin = e.target.checked;
+                try {
+                    await apiCall('/admin/users/permissions', 'PUT', { user_id: userId, is_admin: isAdmin });
+                    alert('权限更新成功！');
+                } catch (error) {
+                    alert('权限更新失败: ' + error.message);
+                    e.target.checked = !isAdmin;
+                }
+            }
+        });
+
+        // --- 题库管理 ---
+        async function loadDrafts() {
+            try {
+                const drafts = await apiCall('/admin/questions/drafts');
+                if (!drafts) {
+                    draftCache = []; // 清空缓存
+                    return;
+                }
+                draftCache = drafts; // [修改] 填充缓存
+                draftListContainer.innerHTML = '';
+                draftCountSpan.textContent = drafts.length;
+                drafts.forEach(draft => {
+                    const draftElement = document.createElement('div');
+                    draftElement.className = 'draft-item';
+                    draftElement.innerHTML = `
+                        <div class="draft-title">${draft.title || '无标题'} (ID: ${draft.id})</div>
+                        <div class="draft-topics">知识点: ${draft.topics || '未分类'}</div>
+                        <button class="edit-draft-btn" data-id="${draft.id}">审核/编辑</button>
+                    `;
+                    draftListContainer.appendChild(draftElement);
+                });
+            } catch (error) {
+                console.error('加载草稿列表失败:', error);
+            }
+        }
+
+        batchGenerateBtn.addEventListener('click', async () => {
+            const topics = document.getElementById('ai-topics').value.split(',').map(t => t.trim()).filter(t => t);
+            const count = parseInt(document.getElementById('ai-count').value, 10);
+            const llm_provider = document.getElementById('ai-llm-provider').value;
+
+            if (topics.length === 0 || !count) {
+                alert('请输入知识点和数量！');
+                return;
+            }
+
+            batchGenerateBtn.textContent = '生成中...';
+            batchGenerateBtn.disabled = true;
+            try {
+                const response = await apiCall('/admin/questions/batch-generate', 'POST', { topics, count, llm_provider });
+                alert(response.message);
+                setTimeout(loadDrafts, 3000);
+            } catch (error) {
+                // apiCall内部已处理alert
+            } finally {
+                batchGenerateBtn.textContent = '开始生成';
+                batchGenerateBtn.disabled = false;
+            }
+        });
+
+        // [修改] 从缓存读取数据来打开模态框
+        draftListContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('edit-draft-btn')) {
+                const questionId = e.target.dataset.id;
+                const draft = draftCache.find(d => d.id == questionId);
+
+                if (draft) {
+                    document.getElementById('edit-question-id').value = draft.id;
+                    document.getElementById('edit-title').value = draft.title;
+                    document.getElementById('edit-topics').value = draft.topics;
+                    document.getElementById('edit-question-text').value = draft.question_text;
+                    document.getElementById('edit-setup-sql').value = draft.setup_sql;
+                    document.getElementById('edit-correct-sql').value = draft.correct_sql;
+                    editModal.style.display = 'flex';
+                } else {
+                    alert('无法找到题目详情，请刷新页面后重试。');
+                }
+            }
+        });
+
+        // --- 模态框逻辑 ---
+        closeModalBtn.addEventListener('click', () => editModal.style.display = 'none');
+
+        editModal.addEventListener('click', (e) => {
+            if (e.target === editModal) {
+                editModal.style.display = 'none';
+            }
+        });
+
+        async function handleModalAction(action, questionId) {
+            let promise;
+            if (action === 'update') {
+                const body = {
+                    title: document.getElementById('edit-title').value,
+                    topics: document.getElementById('edit-topics').value,
+                    question_text: document.getElementById('edit-question-text').value,
+                    setup_sql: document.getElementById('edit-setup-sql').value,
+                    correct_sql: document.getElementById('edit-correct-sql').value,
+                };
+                promise = apiCall(`/admin/questions/${questionId}`, 'PUT', body);
+            } else if (action === 'publish') {
+                if (!confirm(`确定要发布题目 #${questionId} 吗？`)) return;
+                promise = apiCall(`/admin/questions/${questionId}/publish`, 'POST');
+            }
+
+            try {
+                await promise;
+                alert(`${action === 'update' ? '保存' : '发布'}成功！`);
+                editModal.style.display = 'none';
+                await loadDrafts(); // 重新加载列表和缓存
+            } catch (error) {
+                // alert已经由apiCall处理
+            }
+        }
+
+        updateBtn.addEventListener('click', () => {
+            const questionId = document.getElementById('edit-question-id').value;
+            handleModalAction('update', questionId);
+        });
+
+        publishBtn.addEventListener('click', () => {
+            const questionId = document.getElementById('edit-question-id').value;
+            handleModalAction('publish', questionId);
+        });
+
+        // --- 登出和改密 ---
+        function handleLogout() {
+            localStorage.removeItem('sql_token');
+            window.location.href = 'login.html';
+        }
+
+        logoutBtn.addEventListener('click', handleLogout);
+        changePasswordBtn.addEventListener('click', () => {
+            window.location.href = 'change-password.html';
+        });
+
+        // --- 启动 ---
+        initializeAdminPage();
+    });
+    </script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 # 作用: 定义Pydantic模型，用于API的数据校验和序列化。
 
 from pydantic import BaseModel, Field
-from typing import Optional, Literal, List, Any
+from typing import Optional, Literal, List, Any, Dict
 import datetime
 
 
@@ -45,7 +45,23 @@ class TokenData(BaseModel):
 class ExplanationRequest(BaseModel):
     topic: str
     llm_provider: Literal["deepseek", "qwen"]
+    # 新增：用户可以选择是否开启个性化推荐
+    personalized: bool = False
 
+class QuestionPublicView(BaseModel):
+    question_id: int
+    title: str
+    question_text: str
+    setup_sql: str
+    topics: str
+
+    class Config:
+        from_attributes = True
+
+# 新增：知识点讲解时，可能会附带一个推荐题目
+class PersonalizedExplanationResponse(BaseModel):
+    explanation_stream_url: str # 前端将从这个URL获取流式讲解
+    recommended_question: Optional[QuestionPublicView] = None
 
 class ChatHistoryBase(BaseModel):
     request_message: str
@@ -100,17 +116,6 @@ class QuestionAdminView(QuestionUpdate):
         from_attributes = True
 
 
-class QuestionPublicView(BaseModel):
-    question_id: int
-    title: str
-    question_text: str
-    setup_sql: str
-    topics: str
-
-    class Config:
-        from_attributes = True
-
-
 class TestAnswerSubmissionRequest(BaseModel):
     question_id: int
     user_sql: str
@@ -152,3 +157,10 @@ class LeaderboardEntry(BaseModel):
 
     class Config:
         from_attributes = True
+
+# --- 【新增】Stats Schema ---
+class ChartDataResponse(BaseModel):
+    # key是日期字符串 "YYYY-MM-DD", value是当天的答题数
+    labels: List[str] # 日期标签
+    correct_data: List[int] # 每日正确数
+    incorrect_data: List[int] # 每日错误数
